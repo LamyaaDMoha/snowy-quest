@@ -44,6 +44,7 @@
       font-size: 18px;
       cursor: pointer;
       margin-top: 25px;
+      transition: 0.3s;
     }
 
     button:hover {
@@ -57,14 +58,18 @@
 
   <div class="menu">
     <h1>SNOWY QUEST</h1>
-    <p>A Journey Through the Frozen World</p>
 
-    <button onclick="startGame()">Start Adventure</button>
+    <p>A Journey Through the Frozen World</p>
+    <p>Collect crystals and find the portal!</p>
+
+    <button onclick="startGame()">
+      Start Adventure
+    </button>
   </div>
 
   <script>
     function startGame() {
-      alert("Your adventure is about to begin!");
+      window.location.href = "game.html";
     }
   </script>
 
