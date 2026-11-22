@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snowy Quest | Ice Maze</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 24px 14px;
+      font-family: 'Trebuchet MS', Arial, sans-serif;
+      text-align: center;
+      color: #e8f8ff;
+      background: radial-gradient(
+        circle at top,
+        #315a84,
+        #162e4b 52%,
+        #0a1425
+      );
+    }
+
+    h1 {
+      margin: 5px 0;
+      letter-spacing: 3px;
+      color: #d8f4ff;
+      text-shadow: 0 0 20px #6cc8fc;
+    }
+
+    .subtitle {
+      margin: 7px 0 20px;
+      color: #bddcf4;
+    }
+
+    .hud {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+
+    .pill {
+      background: #213c5d;
+      border: 1px solid #79bfdf;
+      border-radius: 25px;
+      padding: 9px 16px;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      max-width: 608px;
+      margin: auto;
+      border: 3px solid #9cdef8;
+      border-radius: 15px;
+      background: #10223a;
+      box-shadow: 0 0 35px #569ec057;
+    }
+
+    .tip {
+      color: #d1e6f5;
+      font-size: 14px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(3, 55px);
+      gap: 6px;
+      justify-content: center;
+      margin: 14px auto;
+    }
+
+    button {
+      background: #8eccef;
+      color: #14304e;
+      border: 0;
+      border-radius: 12px;
+      font-size: 22px;
+      font-weight: bold;
+      padding: 10px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #c7aefe;
+    }
+
+    #restart {
+      font-size: 15px;
+      border-radius: 25px;
+      padding: 11px 25px;
+      margin: 5px;
+    }
+
+    a {
+      display: inline-block;
+      color: #a7dbf9;
+      margin: 12px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>SNOWY QUEST</h1>
+  <p class="subtitle">The Frozen Maze</p>
+
+  <div class="hud">
+    <span class="pill">
+      Score: <b id="score">0</b>
+    </span>
+
+    <span class="pill">
+      Crystals:
+      <b id="crystals">0</b>/<b id="total">0</b>
+    </span>
+
+    <span class="pill">
+      Lives: <b id="lives">3</b>
+    </span>
+  </div>
+
+  <canvas id="game" width="608" height="416"></canvas>
+
+  <p class="tip">
+    Press an arrow key or WASD to move one tile.
+    Collect points and reach the glowing circle to win!
+  </p>
+
+  <div class="controls">
+    <span></span>
+    <button data-dir="up">↑</button>
+    <span></span>
+
+    <button data-dir="left">←</button>
+    <button data-dir="down">↓</button>
+    <button data-dir="right">→</button>
+  </div>
+
+  <button id="restart">Restart Adventure</button>
+
+  <div>
+    <a href="index.html">Back to Main Menu</a>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    const size = 32;
+
+    // Game maze
+    const layout = [
+      "###################",
+      "#P..C...#......C.E#",
+      "#.###.#.#.#.###.#.#",
+      "#.....#...#.....#.#",
+      "#.#####.#.#####.#.#",
+      "#...C...#...C.....#",
+      "###.###.#.###.###.#",
+      "#...#...G...#.....#",
+      "#.#.#.#####.#.###.#",
+      "#.#...#...#...#...#",
+      "#.###.#.#.###.#.#.#",
+      "#C......#...G...C.#",
+      "###################"
+    ];
+
+    const directions = {
+      up: {
+        x: 0,
+        y: -1,
+        angle: -Math.PI / 2
+      },
+
+      down: {
+        x: 0,
+        y: 1,
+        angle: Math.PI / 2
+      },
+
+      left: {
+        x: -1,
+        y: 0,
+        angle: Math.PI
+      },
+
+      right: {
+        x: 1,
+        y: 0,
+        angle: 0
+      }
+    };
+
+    // Falling snow
+    const flakes = Array.from({ length: 35 }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      r: 0.5 + Math.random() * 1.7,
+      speed: 0.2 + Math.random() * 0.6
+    }));
+
+    let map;
+    let player;
+    let enemies;
+    let startPosition;
+
+    let score;
+    let crystals;
+    let totalCrystals;
+    let lives;
+    let mode;
+
+    let ticks;
+    let safeUntil;
+    let moveAnimationUntil;
+
+    // Restart the game
+    function restart() {
+      map = layout.map(row => row.split(""));
+      enemies = [];
+      totalCrystals = 0;
+
+      for (let y = 0; y < map.length; y++) {
+        for (let x = 0; x < map[y].length; x++) {
+
+          if (map[y][x] === "P") {
+            startPosition = { x, y };
+            map[y][x] = " ";
+          }
+
+          if (map[y][x] === "G") {
+            enemies.push({
+              x,
+              y,
+              homeX: x,
+              homeY: y
+            });
+
+            map[y][x] = " ";
+          }
+
+          if (map[y][x] === "C") {
+            totalCrystals++;
+          }
+        }
+      }
+
+      player = {
+        ...startPosition,
+        angle: 0
+      };
+
+      score = 0;
+      crystals = 0;
+      lives = 3;
+      ticks = 0;
+
+      mode = "playing";
+      safeUntil = 0;
+      moveAnimationUntil = 0;
+
+      updateHud();
+    }
+
+    // Update score and lives
+    function updateHud() {
+      document.getElementById("score").textContent = score;
+      document.getElementById("crystals").textContent = crystals;
+      document.getElementById("total").textContent = totalCrystals;
+      document.getElementById("lives").textContent = lives;
+    }
+
+    function canMove(x, y) {
+      return map[y] &&
+             map[y][x] &&
+             map[y][x] !== "#";
+    }
+
+    // Keyboard controls
+    const controls = {
+      arrowup: "up",
+      arrowdown: "down",
+      arrowleft: "left",
+      arrowright: "right",
+      w: "up",
+      s: "down",
+      a: "left",
+      d: "right"
+    };
+
+    // Move one tile per key press
+    function moveOneTile(name) {
+      if (mode !== "playing" || !directions[name]) {
+        return;
+      }
+
+      const step = directions[name];
+      player.angle = step.angle;
+
+      const nextX = player.x + step.x;
+      const nextY = player.y + step.y;
+
+      if (!canMove(nextX, nextY)) {
+        return;
+      }
+
+      player.x = nextX;
+      player.y = nextY;
+
+      const now = performance.now();
+      moveAnimationUntil = now + 200;
+
+      const tile = map[player.y][player.x];
+
+      // Collect points
+      if (tile === ".") {
+        score += 10;
+        map[player.y][player.x] = " ";
+      }
+
+      // Collect crystals
+      else if (tile === "C") {
+        score += 50;
+        crystals++;
+        map[player.y][player.x] = " ";
+      }
+
+      // Reach the portal and win
+      else if (tile === "E") {
+        mode = "won";
+      }
+
+      if (mode === "playing") {
+        checkCollision(now);
+      }
+
+      updateHud();
+    }
+
+    document.addEventListener("keydown", event => {
+      const key = event.key.toLowerCase();
+      const name = controls[key];
+
+      if (name) {
+        event.preventDefault();
+
+        if (!event.repeat) {
+          moveOneTile(name);
+        }
+      }
+
+      else if (key === "r" && !event.repeat) {
+        restart();
+      }
+    });
+
+    // On-screen arrow buttons
+    document.querySelectorAll("[data-dir]").forEach(button => {
+      button.addEventListener("click", () => {
+        moveOneTile(button.dataset.dir);
+      });
+    });
+
+    document.getElementById("restart").addEventListener(
+      "click",
+      restart
+    );
+
+    // Enemy movement
+    function enemyStep(enemy) {
+      const available = Object.keys(directions).filter(name => {
+        const next = directions[name];
+
+        return canMove(
+          enemy.x + next.x,
+          enemy.y + next.y
+        );
+      });
+
+      if (!available.length) {
+        return;
+      }
+
+      available.sort((a, b) => {
+        const A = directions[a];
+        const B = directions[b];
+
+        const da =
+          Math.abs(enemy.x + A.x - player.x) +
+          Math.abs(enemy.y + A.y - player.y);
+
+        const db =
+          Math.abs(enemy.x + B.x - player.x) +
+          Math.abs(enemy.y + B.y - player.y);
+
+        return da - db;
+      });
+
+      const choice = Math.random() < 0.45
+        ? available[0]
+        : available[
+            Math.floor(Math.random() * available.length)
+          ];
+
+      enemy.x += directions[choice].x;
+      enemy.y += directions[choice].y;
+    }
+
+    // Enemy collision
+    function checkCollision(now) {
+      if (now < safeUntil) {
+        return;
+      }
+
+      const hit = enemies.some(enemy =>
+        enemy.x === player.x &&
+        enemy.y === player.y
+      );
+
+      if (hit) {
+        lives--;
+
+        if (lives <= 0) {
+          mode = "lost";
+          return;
+        }
+
+        player = {
+          ...startPosition,
+          angle: 0
+        };
+
+        enemies.forEach(enemy => {
+          enemy.x = enemy.homeX;
+          enemy.y = enemy.homeY;
+        });
+
+        safeUntil = now + 1800;
+      }
+    }
+
+    function update(now) {
+      if (mode !== "playing") {
+        return;
+      }
+
+      ticks++;
+
+      if (ticks % 3 === 0) {
+        enemies.forEach(enemyStep);
+        checkCollision(now);
+      }
+
+      updateHud();
+    }
+
+    function roundedRect(x, y, w, h, radius, color) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, radius);
+      ctx.fill();
+    }
+
+    // Draw the ice maze
+    function drawMap(now) {
+      const sky = ctx.createLinearGradient(
+        0, 0, 0, canvas.height
+      );
+
+      sky.addColorStop(0, "#10253e");
+      sky.addColorStop(1, "#1e4567");
+
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      for (let y = 0; y < map.length; y++) {
+        for (let x = 0; x < map[y].length; x++) {
+
+          const tile = map[y][x];
+          const px = x * size;
+          const py = y * size;
+
+          // Ice walls
+          if (tile === "#") {
+            roundedRect(
+              px + 2, py + 2,
+              28, 28, 7,
+              "#47799c"
+            );
+
+            roundedRect(
+              px + 5, py + 5,
+              22, 20, 6,
+              "#79b4d3"
+            );
+
+            ctx.fillStyle = "rgba(235,251,255,0.35)";
+            ctx.fillRect(px + 9, py + 7, 13, 2);
+          }
+
+          // Small points
+          else if (tile === ".") {
+            ctx.fillStyle = "#c6eeff";
+            ctx.beginPath();
+            ctx.arc(
+              px + 16, py + 16,
+              3.5, 0, Math.PI * 2
+            );
+            ctx.fill();
+          }
+
+          // Purple crystals
+          else if (tile === "C") {
+            const bob = Math.sin(now / 250 + x) * 2;
+
+            ctx.fillStyle = "#d8baff";
+            ctx.strokeStyle = "#f7ecff";
+            ctx.lineWidth = 1.5;
+
+            ctx.beginPath();
+            ctx.moveTo(px + 16, py + 5 + bob);
+            ctx.lineTo(px + 25, py + 16 + bob);
+            ctx.lineTo(px + 16, py + 27 + bob);
+            ctx.lineTo(px + 7, py + 16 + bob);
+            ctx.closePath();
+
+            ctx.fill();
+            ctx.stroke();
+          }
+
+          // Winning portal
+          else if (tile === "E") {
+            ctx.save();
+            ctx.translate(px + 16, py + 16);
+
+            ctx.strokeStyle = "#a2ffd7";
+            ctx.lineWidth = 4;
+            ctx.shadowColor = "#a2ffd7";
+            ctx.shadowBlur = 12;
+
+            ctx.beginPath();
+            ctx.arc(
+              0, 0,
+              11 + Math.sin(now / 180) * 2,
+              0, Math.PI * 2
+            );
+            ctx.stroke();
+
+            ctx.restore();
+          }
+        }
+      }
+    }
+
+    // Ice Pac-Man character
+    function drawPlayer(now) {
+      if (
+        now < safeUntil &&
+        Math.floor(now / 150) % 2 === 0
+      ) {
+        return;
+      }
+
+      const x = (player.x + 0.5) * size;
+      const y = (player.y + 0.5) * size;
+
+      const mouth = now < moveAnimationUntil
+        ? 0.15 + Math.abs(Math.sin(now / 85)) * 0.45
+        : 0.2;
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(player.angle);
+
+      ctx.shadowColor = "#a2e8ff";
+      ctx.shadowBlur = 13;
+
+      ctx.fillStyle = "#b8efff";
+      ctx.strokeStyle = "#f4ffff";
+      ctx.lineWidth = 1.5;
+
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(
+        0, 0, 13,
+        mouth,
+        Math.PI * 2 - mouth
+      );
+
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Eye
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#24496b";
+
+      ctx.beginPath();
+      ctx.arc(1, -8, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // Draw enemies
+    function drawEnemies(now) {
+      enemies.forEach((enemy, i) => {
+        const x = (enemy.x + 0.5) * size;
+        const y = (enemy.y + 0.5) * size;
+
+        ctx.save();
+        ctx.translate(
+          x,
+          y + Math.sin(now / 230 + i) * 2
+        );
+
+        ctx.fillStyle = i === 0
+          ? "#bda5f1"
+          : "#86d4ef";
+
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = 9;
+
+        ctx.beginPath();
+        ctx.arc(0, -3, 11, Math.PI, 0);
+        ctx.lineTo(11, 11);
+        ctx.lineTo(5, 7);
+        ctx.lineTo(0, 11);
+        ctx.lineTo(-5, 7);
+        ctx.lineTo(-11, 11);
+        ctx.closePath();
+        ctx.fill();
+
+        // Eyes
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#172a43";
+
+        ctx.beginPath();
+        ctx.arc(-4, -2, 2, 0, Math.PI * 2);
+        ctx.arc(4, -2, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      });
+    }
+
+    // Animated snowfall
+    function drawSnow() {
+      ctx.fillStyle = "rgba(234,248,255,0.55)";
+
+      flakes.forEach(flake => {
+        ctx.beginPath();
+
+        ctx.arc(
+          flake.x,
+          flake.y,
+          flake.r,
+          0,
+          Math.PI * 2
+        );
+
+        ctx.fill();
+
+        flake.y += flake.speed;
+
+        if (flake.y > canvas.height) {
+          flake.y = -2;
+          flake.x = Math.random() * canvas.width;
+        }
+      });
+    }
+
+    // Win and lose screen
+    function drawMessage() {
+      if (mode === "playing") {
+        return;
+      }
+
+      ctx.fillStyle = "rgba(7,19,37,0.87)";
+      ctx.fillRect(
+        0, 0,
+        canvas.width,
+        canvas.height
+      );
+
+      ctx.textAlign = "center";
+
+      ctx.fillStyle = "#dcf7ff";
+      ctx.font = "bold 36px Trebuchet MS, Arial";
+
+      ctx.fillText(
+        mode === "won" ? "YOU WON!" : "GAME OVER",
+        canvas.width / 2,
+        183
+      );
+
+      ctx.fillStyle = "#c7b3f7";
+      ctx.font = "19px Trebuchet MS, Arial";
+
+      ctx.fillText(
+        mode === "won"
+          ? "You reached the frozen portal!"
+          : "The adventure is not over.",
+        canvas.width / 2,
+        225
+      );
+
+      ctx.fillText(
+        mode === "won"
+          ? "Final score: " + score
+          : "Press Restart Adventure to try again",
+        canvas.width / 2,
+        265
+      );
+    }
+
+    // Main game loop
+    let last = 0;
+
+    function loop(now) {
+      if (now - last >= 145) {
+        update(now);
+        last = now;
+      }
+
+      drawMap(now);
+      drawSnow();
+      drawPlayer(now);
+      drawEnemies(now);
+      drawMessage();
+
+      requestAnimationFrame(loop);
+    }
+
+    restart();
+    requestAnimationFrame(loop);
+
+  </script>
+</body>
+</html>
